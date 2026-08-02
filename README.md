@@ -1,7 +1,9 @@
 ## Installation
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/onurbil/lpa/main/install.sh | bash
+```
+git clone https://github.com/onurbil/lpa.git
+cd lpa
+bash isntall.sh
 ```
 
 ## Repository Structure
