@@ -1,0 +1,438 @@
+#!/usr/bin/env bash
+set -e
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+    DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+    SOURCE="$(readlink "$SOURCE")"
+    [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+
+LLAMA_BIN="$SCRIPT_DIR/install/bin/llama-cli"
+LLAMA_SERVER_BIN="$SCRIPT_DIR/install/bin/llama-server"
+LLAMA_LIB="$SCRIPT_DIR/install/lib"
+CACHE_DIR="$HOME/.cache/huggingface/hub"
+UPDATE_SCRIPT="$SCRIPT_DIR/scripts/update.sh"
+GPU_MONITOR="$SCRIPT_DIR/scripts/gpu-monitor.sh"
+
+
+usage() {
+    cat <<EOF
+
+lpac - llama.cpp model manager
+
+Usage:
+  lpac <command> [arguments]
+
+Commands:
+
+  list
+      List all downloaded GGUF models
+
+  files <hf-repo>
+      List available GGUF files in a HuggingFace repository
+
+      Example:
+        lpac files ggml-org/gemma-3-4b-it-GGUF
+
+
+  pull <hf-repo> <filename.gguf>
+      Download a GGUF model without starting it
+
+      Example:
+        lpac pull ggml-org/gemma-3-4b-it-GGUF gemma-3-4b-it-Q4_K_M.gguf
+
+
+  run [model]
+      Run llama.cpp CLI chat
+
+      If no model is given, select interactively.
+
+      Examples:
+        lpac run
+        lpac run Qwen3.5-9B-Q4_K_M
+
+      Extra options are passed directly to llama-cli:
+
+        lpac run model --ctx-size 16384
+
+
+  serve [model]
+      Start llama.cpp OpenAI-compatible server
+
+      If no model is given, select interactively.
+
+      Examples:
+        lpac serve
+        lpac serve Qwen3.5-9B-Q4_K_M
+
+      Extra options are passed directly to llama-server:
+
+        lpac serve model --port 8080
+        lpac serve model --host 0.0.0.0
+
+
+  stop
+      Stop running llama.cpp processes
+	  
+
+  ps
+      Show running llama.cpp processes
+
+      Displays:
+        - PID
+        - CPU usage
+        - RAM usage
+        - Model name
+        - GPU status
+
+
+  update
+      Update llama.cpp installation
+
+
+  remove [model]
+      Remove a downloaded GGUF model
+
+      If no model is given, select interactively.
+
+      Examples:
+        lpac remove
+        lpac remove Qwen3.5-9B-Q4_K_M
+        
+
+  uninstall
+      Remove the global lpa command symlink
+
+      Does not remove the lpa installation directory.
+
+Environment:
+
+  Models:
+      $CACHE_DIR
+
+  llama.cpp:
+      $SCRIPT_DIR/install
+
+
+Examples:
+
+  Start chat:
+      lpac run
+
+  Start API server:
+      lpac serve
+
+  Use a specific model:
+      lpac run Qwen3.5-9B-Q4_K_M
+
+  Download a model:
+      lpac pull org/model model.gguf
+
+
+EOF
+
+    exit 1
+}
+
+require_hf_cli() {
+    command -v hf >/dev/null 2>&1 || {
+        echo "'hf' CLI not found. Install with: pip install -U huggingface_hub"
+        exit 1
+    }
+}
+
+download_model() {
+    local repo="$1" file="$2"
+    require_hf_cli
+    mkdir -p "$CACHE_DIR"
+    echo "Downloading $file from $repo ..."
+    hf download "$repo" "$file" --local-dir "$CACHE_DIR"
+}
+
+case "$1" in
+    list)
+        printf "%-35s %-10s\n" "MODEL" "SIZE"
+        echo "-----------------------------------------------"
+
+        find "$CACHE_DIR" -type f -name "*.gguf" | while read -r FILE; do
+            NAME=$(basename "$FILE" .gguf)
+            SIZE=$(du -h "$FILE" | cut -f1)
+
+            printf "%-35s %-10s\n" "$NAME" "$SIZE"
+        done
+        ;;
+
+    files)
+        shift
+        [[ $# -ge 1 ]] || usage
+        require_hf_cli
+        python3 -c "
+	from huggingface_hub import list_repo_files
+	for f in list_repo_files('$1'):
+		if f.endswith('.gguf'):
+			print(f)
+	"
+        ;;
+
+    pull)
+        shift
+        [[ $# -ge 2 ]] || usage
+        download_model "$1" "$2"
+        ;;
+
+	run)
+	    shift
+
+	    if [[ $# -eq 0 ]]; then
+			mapfile -t MODELS < <("$0" list | tail -n +3 | awk '{print $1}')
+
+	        [[ ${#MODELS[@]} -gt 0 ]] || {
+	            echo "No models found."
+	            exit 1
+	        }
+
+	        PS3="Select a model: "
+	        select MODEL in "${MODELS[@]}"; do
+	            [[ -n "$MODEL" ]] && break
+	            echo "Invalid selection."
+	        done
+	    else
+	        MODEL="$1"
+	        shift
+	    fi
+
+        if [[ "$MODEL" == *:* && "$MODEL" == */* ]]; then
+            REPO="${MODEL%%:*}"
+            FILE="${MODEL##*:}"
+            MODEL_PATH="$CACHE_DIR/$FILE"
+            [[ -f "$MODEL_PATH" ]] || download_model "$REPO" "$FILE"
+        else
+            MODEL_PATH=$(find "$CACHE_DIR" -type f -name "${MODEL}.gguf" | head -n1)
+        fi
+
+        if [[ -z "$MODEL_PATH" || ! -f "$MODEL_PATH" ]]; then
+            echo "Model '$MODEL' not found."
+            echo
+            echo "Available models:"
+            find "$CACHE_DIR" -type f -name "*.gguf" \
+                | xargs -n1 basename \
+                | sed 's/\.gguf$//' \
+                | sort
+            echo
+            echo "To auto-download: $0 run <org/repo>:<filename.gguf>"
+            exit 1
+        fi
+
+        LD_LIBRARY_PATH="$LLAMA_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+		    exec "$LLAMA_BIN" \
+		        -m "$MODEL_PATH" \
+		        --jinja \
+		        --chat-template-kwargs '{"enable_thinking":false}' \
+		        "$@"            
+        ;;
+
+    update)
+        [[ -x "$UPDATE_SCRIPT" ]] || {
+            echo "Update script not found or not executable:"
+            echo "  $UPDATE_SCRIPT"
+            echo
+            echo "Run: chmod +x $UPDATE_SCRIPT"
+            exit 1
+        }
+
+        exec "$UPDATE_SCRIPT"
+        ;;
+
+	ps)
+		echo "GPU STATUS"
+		echo "=========="
+
+		if [[ -x "$GPU_MONITOR" ]]; then
+			"$GPU_MONITOR"
+		else
+			echo "GPU monitor not found"
+		fi
+
+		echo
+
+		printf "%-8s %-10s %-10s %s\n" PID CPU RAM MODEL
+
+		pgrep -f "llama-(cli|server)" | while read -r pid; do
+
+			cpu=$(ps -p "$pid" -o %cpu= | xargs)
+
+			ram=$(ps -p "$pid" -o rss= | awk '{printf "%.0f MB",$1/1024}')
+
+			model=$(ps -p "$pid" -o args= \
+				| sed -n 's/.*-m \([^ ]*\).*/\1/p' \
+				| xargs basename \
+				| sed 's/\.gguf$//')
+
+			printf "%-8s %-10s %-10s %s\n" \
+				"$pid" "$cpu%" "$ram" "$model"
+
+		done
+		;;
+
+    serve)
+        shift
+
+        if [[ $# -eq 0 ]]; then
+			mapfile -t MODELS < <("$0" list | tail -n +3 | awk '{print $1}')
+
+            [[ ${#MODELS[@]} -gt 0 ]] || {
+                echo "No models found."
+                exit 1
+            }
+
+            PS3="Select a model: "
+            select MODEL in "${MODELS[@]}"; do
+                [[ -n "$MODEL" ]] && break
+                echo "Invalid selection."
+            done
+        else
+            MODEL="$1"
+            shift
+        fi
+
+
+        if [[ "$MODEL" == *:* && "$MODEL" == */* ]]; then
+            REPO="${MODEL%%:*}"
+            FILE="${MODEL##*:}"
+            MODEL_PATH="$CACHE_DIR/$FILE"
+
+            [[ -f "$MODEL_PATH" ]] || download_model "$REPO" "$FILE"
+
+        else
+            MODEL_PATH=$(find "$CACHE_DIR" \
+                -type f \
+                -name "${MODEL}.gguf" \
+                | head -n1)
+        fi
+
+
+        if [[ -z "$MODEL_PATH" || ! -f "$MODEL_PATH" ]]; then
+            echo "Model '$MODEL' not found."
+            echo
+            echo "Available models:"
+            "$0" list
+            exit 1
+        fi
+
+
+        echo "Starting llama-server"
+        echo "Model: $(basename "$MODEL_PATH")"
+        echo "Port: 8080"
+        echo
+
+
+        LD_LIBRARY_PATH="$LLAMA_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+        exec "$LLAMA_SERVER_BIN" \
+            -m "$MODEL_PATH" \
+            --port 8080 \
+            --jinja \
+            --chat-template-kwargs '{"enable_thinking":false}' \
+            "$@"
+        ;;
+
+    stop)
+        PIDS=$(pgrep -f "llama-(cli|server)" || true)
+
+        if [[ -z "$PIDS" ]]; then
+            echo "No llama.cpp processes running."
+            exit 0
+        fi
+
+        echo "Stopping llama.cpp processes:"
+        echo "$PIDS"
+
+        kill $PIDS
+
+        sleep 1
+
+        # Force kill if still running
+        REMAINING=$(pgrep -f "llama-(cli|server)" || true)
+
+        if [[ -n "$REMAINING" ]]; then
+            echo "Force stopping remaining processes:"
+            echo "$REMAINING"
+            kill -9 $REMAINING
+        fi
+
+        echo "Stopped."
+        ;;
+
+    remove)
+        shift
+
+        if [[ $# -eq 0 ]]; then
+			mapfile -t MODELS < <("$0" list | tail -n +3 | awk '{print $1}')
+
+            [[ ${#MODELS[@]} -gt 0 ]] || {
+                echo "No models found."
+                exit 1
+            }
+
+            PS3="Select a model to remove: "
+            select MODEL in "${MODELS[@]}"; do
+                [[ -n "$MODEL" ]] && break
+                echo "Invalid selection."
+            done
+        else
+            MODEL="$1"
+        fi
+
+
+        MODEL_PATH=$(find "$CACHE_DIR" \
+            -type f \
+            -name "${MODEL}.gguf" \
+            | head -n1)
+
+
+        if [[ -z "$MODEL_PATH" || ! -f "$MODEL_PATH" ]]; then
+            echo "Model '$MODEL' not found."
+            exit 1
+        fi
+
+
+        echo "Removing:"
+        echo "$MODEL_PATH"
+        echo
+
+        read -p "Delete this model? [y/N] " CONFIRM
+
+        if [[ "$CONFIRM" == "y" || "$CONFIRM" == "Y" ]]; then
+            rm "$MODEL_PATH"
+            echo "Model removed."
+        else
+            echo "Cancelled."
+        fi
+        ;;
+
+	uninstall)
+	    LINK="/usr/local/bin/lpa"
+
+	    if [[ -L "$LINK" ]]; then
+	        TARGET=$(readlink "$LINK")
+
+	        if [[ "$TARGET" == "$SCRIPT_DIR/lpa" ]]; then
+	            sudo rm "$LINK"
+	            echo "Removed lpa symlink."
+	        else
+	            echo "Symlink points somewhere else:"
+	            echo "$TARGET"
+	            exit 1
+	        fi
+	    else
+	        echo "No lpa symlink found."
+	    fi
+	    ;;
+
+    *)
+        usage
+        ;;
+esac
+
