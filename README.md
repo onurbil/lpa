@@ -3,7 +3,7 @@
 ```
 git clone https://github.com/onurbil/lpa.git
 cd lpa
-bash isntall.sh
+bash install.sh
 ```
 
 ## Repository Structure
