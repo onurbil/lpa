@@ -2,7 +2,7 @@
 
 **lpa** is a lightweight command-line package manager and launcher for **llama.cpp** and **stable-diffusion.cpp**.
 
-It builds both projects **locally from source**, allowing you to use the latest upstream versions while taking advantage of hardware-specific optimizations. lpa provides a unified interface to build, update, download models, and run local language and image generation models.
+It builds the selected project **locally from source**, allowing you to use the latest upstream versions while taking advantage of hardware-specific optimizations. lpa provides a unified interface to build, update, download models, and run local language and image generation models.
 
 ## Features
 
