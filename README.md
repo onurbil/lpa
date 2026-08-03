@@ -83,14 +83,3 @@ lpa/
 └── README.md
 ```
 
----
-
-## Requirements
-
-- Linux
-- Git
-- CMake
-- C++ compiler
-- Vulkan-compatible GPU (recommended)
-
-The required build dependencies are installed automatically by `install.sh`.
