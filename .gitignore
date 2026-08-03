@@ -1,4 +1,7 @@
 llama.cpp/
+stable-diffusion.cpp/
 install/
+install_sd/
 build*/
+notes.md
 *.gguf

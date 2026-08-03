@@ -13,6 +13,17 @@ SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 LLAMA_BIN="$SCRIPT_DIR/install/bin/llama-cli"
 LLAMA_SERVER_BIN="$SCRIPT_DIR/install/bin/llama-server"
 LLAMA_LIB="$SCRIPT_DIR/install/lib"
+
+SD_BIN="$SCRIPT_DIR/install_sd/bin/sd-server"   # confirm real binary name post-build
+SD_CLI_BIN="$SCRIPT_DIR/install_sd/bin/sd-cli"
+SD_LIB="$SCRIPT_DIR/install_sd/lib"
+SD_MODEL_DIR="$HOME/.cache/stable-diffusion/models"   # or wherever you keep sd models
+
+SD_DIFFUSION_DIR="$HOME/.cache/stable-diffusion/models"
+SD_VAE_DIR="$HOME/.cache/stable-diffusion/models"
+SD_TEXT_ENCODER_DIR="$HOME/.cache/stable-diffusion/models"
+
+
 CACHE_DIR="$HOME/.cache/huggingface/hub"
 UPDATE_SCRIPT="$SCRIPT_DIR/scripts/update.sh"
 GPU_MONITOR="$SCRIPT_DIR/scripts/gpu-monitor.sh"
@@ -21,7 +32,7 @@ GPU_MONITOR="$SCRIPT_DIR/scripts/gpu-monitor.sh"
 usage() {
     cat <<EOF
 
-lpac - llama.cpp model manager
+lpa - llama.cpp model manager
 
 Usage:
   lpac <command> [arguments]
@@ -145,11 +156,54 @@ require_hf_cli() {
 }
 
 download_model() {
-    local repo="$1" file="$2"
-    require_hf_cli
+    local repo="$1"
+    local file="$2"
+
     mkdir -p "$CACHE_DIR"
+
+    URL="https://huggingface.co/$repo/resolve/main/$file?download=true"
+
     echo "Downloading $file from $repo ..."
-    hf download "$repo" "$file" --local-dir "$CACHE_DIR"
+
+    if ! curl -fL --progress-bar -o "$CACHE_DIR/$file" "$URL"; then
+        echo
+        echo "Download failed."
+        echo "Check that:"
+        echo "  Repository: $repo"
+        echo "  File: $file"
+        exit 1
+    fi
+
+    echo
+    echo "Saved to:"
+    echo "  $CACHE_DIR/$file"
+}
+
+# Interactively select a model file (.gguf or .safetensors) from a directory.
+# Prints the chosen filename (basename only) to stdout.
+pick_model_file() {
+    local dir="$1"
+    local label="$2"
+    local files=()
+
+    mapfile -t files < <(find "$dir" -type f \( -name "*.gguf" -o -name "*.safetensors" \) 2>/dev/null \
+        | xargs -n1 basename 2>/dev/null \
+        | sort)
+
+    if [[ ${#files[@]} -eq 0 ]]; then
+        echo "No $label found in $dir" >&2
+        exit 1
+    fi
+
+    local choice
+    PS3="Select $label: "
+    select choice in "${files[@]}"; do
+        if [[ -n "$choice" ]]; then
+            echo "$choice"
+            return 0
+        fi
+        echo "Invalid selection." >&2
+    done
 }
 
 case "$1" in
@@ -165,23 +219,25 @@ case "$1" in
         done
         ;;
 
-    files)
-        shift
-        [[ $# -ge 1 ]] || usage
-        require_hf_cli
-        python3 -c "
-	from huggingface_hub import list_repo_files
-	for f in list_repo_files('$1'):
-		if f.endswith('.gguf'):
-			print(f)
-	"
-        ;;
+	files)
+		shift
+		[[ $# -ge 1 ]] || usage
 
-    pull)
-        shift
-        [[ $# -ge 2 ]] || usage
-        download_model "$1" "$2"
-        ;;
+		REPO="$1"
+
+		curl -fsSL "https://huggingface.co/api/models/$REPO" \
+		| grep -o '"rfilename":"[^"]*"' \
+		| cut -d'"' -f4 \
+		| grep '\.gguf$' \
+		| sort
+		;;
+
+	pull)
+		shift
+		[[ $# -ge 2 ]] || usage
+
+		download_model "$1" "$2"
+		;;
 
 	run)
 	    shift
@@ -234,17 +290,18 @@ case "$1" in
 		        "$@"            
         ;;
 
-    update)
-        [[ -x "$UPDATE_SCRIPT" ]] || {
-            echo "Update script not found or not executable:"
-            echo "  $UPDATE_SCRIPT"
-            echo
-            echo "Run: chmod +x $UPDATE_SCRIPT"
-            exit 1
-        }
+	update)
+		shift
+		[[ -x "$UPDATE_SCRIPT" ]] || {
+			echo "Update script not found or not executable:"
+			echo "  $UPDATE_SCRIPT"
+			echo
+			echo "Run: chmod +x $UPDATE_SCRIPT"
+			exit 1
+		}
 
-        exec "$UPDATE_SCRIPT"
-        ;;
+		exec "$UPDATE_SCRIPT" "$@"
+		;;
 
 	ps)
 		echo "GPU STATUS"
@@ -431,7 +488,57 @@ case "$1" in
 	    fi
 	    ;;
 
-    *)
+
+	sd)
+		shift
+		SUBCMD="${1:-}"
+		[[ -n "$SUBCMD" ]] && shift
+		case "$SUBCMD" in
+
+			serve)
+				[[ -x "$SD_BIN" ]] || {
+					echo "sd-server binary not found or not executable:"
+					echo "  $SD_BIN"
+					exit 1
+				}
+
+				LD_LIBRARY_PATH="$SD_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+				exec "$SD_BIN" "$@"
+				;;
+
+			run)
+				[[ -x "$SD_CLI_BIN" ]] || {
+					echo "sd-cli binary not found or not executable:"
+					echo "  $SD_CLI_BIN"
+					exit 1
+				}
+
+				LD_LIBRARY_PATH="$SD_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+				exec "$SD_CLI_BIN" "$@"
+				;;
+
+			list)
+				printf "%-35s %-10s\n" "MODEL" "SIZE"
+				echo "-----------------------------------------------"
+				find "$SD_MODEL_DIR" -type f \( -name "*.gguf" -o -name "*.safetensors" \) | while read -r FILE; do
+					printf "%-35s %-10s\n" "$(basename "$FILE")" "$(du -h "$FILE" | cut -f1)"
+				done
+				;;
+			""|help)
+				cat <<EOF
+Usage: lpa sd <command> [arguments]
+Commands:
+	run [options]      Run sd-cli with any options/args passed through
+	serve [options]    Run sd-server with any options/args passed through
+	list               List downloaded sd models
+EOF
+				;;
+
+		esac
+		;;
+
+    *)	
+	
         usage
         ;;
 esac
