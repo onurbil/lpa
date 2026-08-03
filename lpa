@@ -505,6 +505,33 @@ case "$1" in
 				LD_LIBRARY_PATH="$SD_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
 				exec "$SD_BIN" "$@"
 				;;
+				
+			stop)
+				PIDS=$(pgrep -f "sd-(server|cli)" || true)
+
+				if [[ -z "$PIDS" ]]; then
+					echo "No sd processes running."
+					exit 0
+				fi
+
+				echo "Stopping sd processes:"
+				echo "$PIDS"
+
+				kill $PIDS
+
+				sleep 1
+
+				# Force kill if still running
+				REMAINING=$(pgrep -f "sd-(server|cli)" || true)
+
+				if [[ -n "$REMAINING" ]]; then
+					echo "Force stopping remaining processes:"
+					echo "$REMAINING"
+					kill -9 $REMAINING
+				fi
+
+				echo "Stopped."
+				;;
 
 			run)
 				[[ -x "$SD_CLI_BIN" ]] || {
@@ -530,6 +557,7 @@ Usage: lpa sd <command> [arguments]
 Commands:
 	run [options]      Run sd-cli with any options/args passed through
 	serve [options]    Run sd-server with any options/args passed through
+	stop               Stop running sd-server/sd-cli processes
 	list               List downloaded sd models
 EOF
 				;;
