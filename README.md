@@ -30,7 +30,7 @@ cd lpa
 
 ### List downloaded llama.cpp models
 
-Lists all llama.cpp models stored in the model directory: `~/.cache/huggingface/hub`
+Lists all llama.cpp models stored in the model directory:  `~/.cache/huggingface/hub`
 
 ```bash
 lpa list
@@ -89,9 +89,7 @@ lpa sd serve <args>
 
 ### List downloaded Stable Diffusion models
 
-Lists all Stable Diffusion models stored in the model directory:
-
-`~/.cache/stable-diffusion/models`
+Lists all Stable Diffusion models stored in the model directory:  `~/.cache/stable-diffusion/models`
 
 ```bash
 lpa sd list
