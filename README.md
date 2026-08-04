@@ -38,32 +38,32 @@ Lists all llama.cpp models stored in the model directory:
 lpa list
 ```
 
-### List downloaded Stable Diffusion models
-
-Lists all Stable Diffusion models stored in the model directory:
-
-`~/.cache/stable-diffusion/models`
+### Monitor running llama.cpp models
 
 ```bash
-lpa list
+lpa ps
 ```
 
-### Download a language model
+### Download a llama.cpp model
 
 ```bash
-lpa pull bartowski/Qwen3-8B-GGUF Qwen3-8B-Q4_K_M.gguf
+lpa pull ggml-org/gemma-3-1b-it-GGUF gemma-3-1b-it-Q4_K_M.gguf
 ```
 
-### Run a language model
+### Run a llama.cpp model
 
 ```bash
-lpa run Qwen3-8B-Q4_K_M.gguf
+# Select the model interactively
+lpa run
+
+# Run a specific model
+lpa run gemma-3-1b-it-Q4_K_M.gguf
 ```
 
-### Start the inference server
+### Start llama.cpp inference server
 
 ```bash
-lpa serve Qwen3-8B-Q4_K_M.gguf
+lpa serve gemma-3-1b-it-Q4_K_M.gguf
 ```
 
 ### Update llama.cpp to the latest upstream versions
@@ -72,16 +72,26 @@ lpa serve Qwen3-8B-Q4_K_M.gguf
 lpa update
 ```
 
-### Update stable-diffusion.cpp to the latest upstream versions
+### Run Stable Diffusion
 
 ```bash
-lpa sd update
+lpa sd run <args>
 ```
 
-### Monitor running models
+### Start Stable Diffusion inference server
 
 ```bash
-lpa ps
+lpa sd serve <args>
+```
+
+### List downloaded Stable Diffusion models
+
+Lists all Stable Diffusion models stored in the model directory:
+
+`~/.cache/stable-diffusion/models`
+
+```bash
+lpa sd list
 ```
 
 ---
