@@ -30,9 +30,7 @@ cd lpa
 
 ### List downloaded llama.cpp models
 
-Lists all llama.cpp models stored in the model directory:
-
-`~/.cache/huggingface/hub`
+Lists all llama.cpp models stored in the model directory: `~/.cache/huggingface/hub`
 
 ```bash
 lpa list
@@ -63,12 +61,17 @@ lpa run gemma-3-1b-it-Q4_K_M.gguf
 ### Start llama.cpp inference server
 
 ```bash
+# Select the model interactively
+lpa serve
+
+# Serve a specific model
 lpa serve gemma-3-1b-it-Q4_K_M.gguf
 ```
 
-### Update llama.cpp to the latest upstream versions
+### Update llama.cpp or stable-diffusion.cpp to the latest upstream versions
 
 ```bash
+# Select interactively
 lpa update
 ```
 
