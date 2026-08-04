@@ -28,7 +28,21 @@ cd lpa
 
 ## Quick Start
 
-### List downloaded models
+### List downloaded llama.cpp models
+
+Lists all llama.cpp models stored in the model directory:
+
+`~/.cache/huggingface/hub`
+
+```bash
+lpa list
+```
+
+### List downloaded Stable Diffusion models
+
+Lists all Stable Diffusion models stored in the model directory:
+
+`~/.cache/stable-diffusion/models`
 
 ```bash
 lpa list
@@ -52,10 +66,16 @@ lpa run Qwen3-8B-Q4_K_M.gguf
 lpa serve Qwen3-8B-Q4_K_M.gguf
 ```
 
-### Update to the latest upstream versions
+### Update llama.cpp to the latest upstream versions
 
 ```bash
 lpa update
+```
+
+### Update stable-diffusion.cpp to the latest upstream versions
+
+```bash
+lpa sd update
 ```
 
 ### Monitor running models

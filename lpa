@@ -26,6 +26,7 @@ SD_TEXT_ENCODER_DIR="$HOME/.cache/stable-diffusion/models"
 
 CACHE_DIR="$HOME/.cache/huggingface/hub"
 UPDATE_SCRIPT="$SCRIPT_DIR/scripts/update.sh"
+UPDATE_SD_SCRIPT="$SCRIPT_DIR/scripts/update_sd.sh"
 GPU_MONITOR="$SCRIPT_DIR/scripts/gpu-monitor.sh"
 
 
@@ -543,6 +544,19 @@ case "$1" in
 				LD_LIBRARY_PATH="$SD_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
 				exec "$SD_CLI_BIN" "$@"
 				;;
+				
+			update)
+				shift
+				[[ -x "$UPDATE_SD_SCRIPT" ]] || {
+					echo "SD update script not found or not executable:"
+					echo "  $UPDATE_SD_SCRIPT"
+					echo
+					echo "Run: chmod +x $UPDATE_SD_SCRIPT"
+					exit 1
+				}
+
+				exec "$UPDATE_SD_SCRIPT" "$@"
+				;;
 
 			list)
 				printf "%-35s %-10s\n" "MODEL" "SIZE"
@@ -559,6 +573,7 @@ Commands:
 	serve [options]    Run sd-server with any options/args passed through
 	stop               Stop running sd-server/sd-cli processes
 	list               List downloaded sd models
+	update             Update stable-diffusion.cpp installation
 EOF
 				;;
 
